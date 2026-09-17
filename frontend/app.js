@@ -97,7 +97,50 @@ function reset() {
 
 async function start() {
   reset();
-  const fileUrl = els.audioUrl.value.trim();
+
+  // Auto-discovery: without an explicit ?party= param, decide the role:
+  // peer found on the LAN -> redirect there as party=b; else become host
+  // (party=a) and re-check shortly to resolve simultaneous starts.
+  if (!partyMode) {
+    els.status.textContent = "suche anderen Teilnehmer im Netzwerk…";
+    let peer = null;
+    try {
+      const res = await fetch("/discover");
+      peer = (await res.json()).peer;
+    } catch {
+      els.status.textContent = "Fehler beim Netzwerk-Scan";
+      return;
+    }
+    if (peer) {
+      els.status.textContent = `Teilnehmer gefunden (${peer}) – verbinde…`;
+      location.href = `http://${peer}:8000/?party=b&room=${roomName}&auto=1`;
+      return;
+    }
+    els.status.textContent = "kein Teilnehmer gefunden – ich bin Gastgeber (Deutsch)";
+    await startParty("a", location.host, roomName);
+    // Simultaneous-start guard: if another host appeared, lower IP wins.
+    setTimeout(async () => {
+      try {
+        const r = await fetch("/discover/check-host");
+        const d = await r.json();
+        if (!d.stay_host && ws) {
+          els.status.textContent = `anderer Gastgeber gefunden (${d.peer}) – wechsle…`;
+          setTimeout(() => (location.href = `http://${d.peer}:8000/?party=b&room=${roomName}&auto=1`), 500);
+        }
+      } catch { /* stay host */ }
+    }, 4000);
+    return;
+  }
+
+  if (urlParams.get("auto") === "1") {
+    // Redirected here as party b: start immediately.
+    els.status.textContent = "verbinde…";
+  }
+  await startParty(partyMode, location.host, roomName);
+  if (urlParams.get("auto") === "1") els.startBtn.click();
+}
+
+async function startParty(party, host, room) {
   const params = new URLSearchParams({
     lang_a: els.langA.value,
     lang_b: els.langB.value,
@@ -107,80 +150,29 @@ async function start() {
     diarize: els.diarize.checked,
   });
 
-  let fileDuration = null;
-  if (fileUrl && !partyMode) {
-    // Probe duration so the backend can pace the stream at real time.
-    fileDuration = await new Promise((resolve) => {
-      const probe = document.createElement("audio");
-      probe.preload = "metadata";
-      probe.src = fileUrl;
-      probe.onloadedmetadata = () => resolve(probe.duration);
-      probe.onerror = () => resolve(null);
-    });
-    if (!fileDuration) {
-      els.status.textContent = "Audiodatei nicht ladbar (URL prüfen/CORS)";
-      return;
-    }
-    params.set("audio_url", fileUrl);
-    params.set("audio_duration", fileDuration.toFixed(2));
-  }
-
   let wsUrl;
-  if (partyMode) {
-    params.set("room", roomName);
-    params.set("party", partyMode);
-    wsUrl = `ws://${location.host}/ws/party?${params}`;
-  } else {
-    wsUrl = `ws://${location.host}/ws/translate?${params}`;
-  }
+  params.set("room", room);
+  params.set("party", party);
+  wsUrl = `ws://${host}/ws/party?${params}`;
   ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";
 
   ws.onopen = async () => {
     els.startBtn.textContent = "Stop";
-    if (partyMode) {
-      els.status.textContent = `verbunden als Partei ${partyMode.toUpperCase()} (Raum ${roomName}) – sprich jetzt`;
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      recorder = new MediaRecorder(stream);
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) ws.send(e.data);
-      };
-      recorder.start(250);
-      return;
-    }
-    if (fileUrl) {
-      els.status.textContent = "spiele Datei ab…";
-      if (!audioCtx) audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
-      fileAudio = new Audio(fileUrl);
-      const srcNode = audioCtx.createMediaElementSource(fileAudio);
-      fileGain = audioCtx.createGain();
-      srcNode.connect(fileGain).connect(audioCtx.destination);
-      fileAudio.play();
-      lastAudioSentAt = performance.now();
-    } else {
-      els.status.textContent = "verbunden – sprich jetzt";
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      recorder = new MediaRecorder(stream);
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
-          lastAudioSentAt = performance.now();
-          ws.send(e.data);
-        }
-      };
-      recorder.start(250);
-    }
+    els.status.textContent = `verbunden als Partei ${party.toUpperCase()} (Raum ${room}) – sprich jetzt`;
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) ws.send(e.data);
+    };
+    recorder.start(250);
   };
 
   ws.onmessage = (e) => {
     if (e.data instanceof ArrayBuffer) {
       const view = new Uint8Array(e.data);
-      // Party mode: raw PCM (no direction prefix). Single mode: 1 prefix byte.
-      const [dir, bytes] = partyMode ? [0, view] : [view[0] === 0 ? 0 : 1, view.subarray(1)];
-      playPcm(dir, bytes);
-      if (!firstAudioAt && lastAudioSentAt) {
-        firstAudioAt = performance.now();
-        els.latency.textContent = `erste Audio: ${Math.round(firstAudioAt - lastAudioSentAt)} ms nach letztem Audiopaket`;
-      }
+      // Party mode always: raw PCM, no direction prefix.
+      playPcm(0, view);
       return;
     }
     const data = JSON.parse(e.data);

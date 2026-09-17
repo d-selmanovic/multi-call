@@ -11,8 +11,16 @@ Umfang:
   Routing nach Token-`language`, Datei-Modus (0 %-Ducking), optionale Diarization.
 - Party/Room-Modus (`/ws/party`): zwei Geräte, je eigener STT/TTS-Pfad (Telefonie-Architektur),
   Gegenstelle hört nur Übersetzung.
+- **Auto-Discovery** (`/discover`): Start-Button scannt das LAN, Rollen (Gastgeber/Partei A
+  vs. Client/Partei B) werden automatisch vergeben; Gleichzeitigkeits-Fenster per IP-Vergleich.
+- **Native macOS-App** (`app/`, Electron, ohne Deskifier): startet das Backend mit,
+  öffnet UI im eigenen Fenster; dmg-Build via electron-builder. Hebt die Deskifier-
+  Einschränkungen auf (kein fester URL, kein Internet-Zwang, kein Wasserzeichen).
+  Hinweis: Dateisystem-Erlaubnisse (Deskifier-Filesystem-Allowlist) hätten diese
+  Einschränkungen NICHT aufgehoben – sie sind architekturell, keine Berechtigungsfrage.
 - CLI-Test `test_file.py` mit Latenzmessung; Test-Fixtures in `tests/`.
-- Getestet: beide Richtungen de↔bs vollständig (Text + Audio), EU-Endpoints, 408-Flush.
+- Getestet: beide Richtungen de↔bs vollständig (Text + Audio), EU-Endpoints, 408-Flush,
+  Discovery (eigene IP + LAN-Erreichbarkeit), App-Start.
 
 Bekannte Einschränkungen (Demo-Scope):
 - TTFA oft erst am Äußerungsende (Soniox-TTS-Verhalten, siehe ARCHITECTURE.md)

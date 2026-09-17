@@ -21,7 +21,23 @@ uv run uvicorn main:app --reload --port 8000
 
 Dann http://localhost:8000 öffnen.
 
-## Testmodi
+## Auto-Discovery (Zwei Macs, keine URL-Parameter mehr)
+
+Beide Macs: **Live-Übersetzung.app** öffnen (oder `start.command`), **Start** klicken.
+Der Server scannt das LAN selbst: wer einen anderen Demo-Server findet, verbindet sich
+automatisch als Partei B (bosnisch), der andere wird Gastgeber/Partei A (deutsch).
+Gleichzeitige Starts werden per IP-Vergleich aufgelöst (niedrigere IP bleibt Gastgeber).
+Endpunkte: `GET /health`, `GET /discover`, `GET /discover/check-host`.
+
+## Native macOS-App (ohne Deskifier)
+
+`app/` enthält eine Electron-App, die das Backend selbst startet und die UI in einem
+nativen Fenster öffnet – keine URL-Konfiguration, keine Internet-Abhängigkeit, kein
+Wasserzeichen. Build: `cd app && npm install && npm run dist` (dmg, unsigned →
+Rechtsklick → Öffnen). Das Backend wird erwartet in
+`/Applications/soniox-translate-demo` (Override per `SONIOX_DEMO_HOME`).
+
+## Testmodi (Klassiker)
 
 ### 1. Single-Client (ein Mikrofon, beide Sprachen)
 `http://localhost:8000` – Sprachen/Stimmen wählen, **Start**, sprechen (deutsch und/oder

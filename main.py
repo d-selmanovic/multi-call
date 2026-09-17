@@ -1,5 +1,6 @@
-import os, json, asyncio, base64, time, websockets, httpx
+import os, json, asyncio, base64, time, socket, websockets, httpx
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
@@ -462,6 +463,89 @@ async def party_websocket(
                 await ws.close()
         if not r["parties"]:
             rooms.pop(room, None)
+
+
+# ---------------------------------------------------------------------------
+# Auto-discovery: find other demo servers on the LAN and negotiate roles.
+# Rule: whoever finds a peer becomes client (party=b), the found one is host
+# (party=a). Hosts re-check shortly after start to resolve simultaneous starts
+# (higher own IP demotes to client).
+# ---------------------------------------------------------------------------
+
+
+def _own_ip() -> str | None:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("192.0.2.1", 80))  # no traffic sent; just picks the interface
+        return s.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        s.close()
+
+
+async def _scan_subnet(port: int, timeout: float = 0.6) -> list[str]:
+    ip = _own_ip()
+    if not ip or not ip.startswith(("10.", "192.168.", "172.")):
+        return []
+    subnet = ip.rsplit(".", 1)[0]
+
+    async def probe(host: str) -> str | None:
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port), timeout=timeout
+            )
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except OSError:
+                pass
+            return host
+        except (OSError, asyncio.TimeoutError):
+            return None
+
+    results = await asyncio.gather(*[probe(f"{subnet}.{i}") for i in range(1, 255)])
+    return sorted(h for h in results if h)
+
+
+async def _demo_peers(port: int = 8000) -> tuple[str | None, list[str]]:
+    """Returns (own_ip, [peer ips running this demo])."""
+    own = _own_ip()
+    peers = []
+    for host in await _scan_subnet(port):
+        if host == own:
+            continue
+        try:
+            async with httpx.AsyncClient(timeout=1.5) as client:
+                r = await client.get(f"http://{host}:{port}/health")
+                if r.status_code == 200 and r.json().get("app") == "soniox-translate-demo":
+                    peers.append(host)
+        except (httpx.HTTPError, ValueError):
+            continue
+    return own, peers
+
+
+@app.get("/health")
+async def health():
+    return {"app": "soniox-translate-demo"}
+
+
+@app.get("/discover")
+async def discover(port: int = 8000):
+    """Scan the LAN for other demo servers. Frontend: if peers found -> connect
+    to first peer as party=b; else become host (party=a)."""
+    own, peers = await _demo_peers(port)
+    return JSONResponse({"own_ip": own, "peers": peers, "peer": peers[0] if peers else None})
+
+
+@app.get("/discover/check-host")
+async def check_host(port: int = 8000):
+    """Called by a host a few seconds after start: if another host appeared and
+    has a lower IP, we demote (return peer to join). Else stay host."""
+    own, peers = await _demo_peers(port)
+    if peers and own and own > peers[0]:
+        return JSONResponse({"stay_host": False, "peer": peers[0]})
+    return JSONResponse({"stay_host": True, "peer": None})
 
 
 app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
