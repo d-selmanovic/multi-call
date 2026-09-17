@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Soniox Live-Übersetzung Demo</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>Live-Übersetzung <span class="dim">·</span> Deutsch ↔ Bosnisch/Kroatisch</h1>
+    <p class="hint">Zwei-Geräte-Test: Gerät 1 öffnet <code>?party=a&room=test</code>, Gerät 2 <code>?party=b&room=test</code> (Partei A definiert Sprachen/Stimmen).</p>
+    <div class="controls">
+      <label>Sprache A
+        <select id="langA">
+          <option value="de" selected>Deutsch</option>
+          <option value="bs">Bosnisch</option>
+          <option value="hr">Kroatisch</option>
+          <option value="en">Englisch</option>
+        </select>
+      </label>
+      <label>Sprache B
+        <select id="langB">
+          <option value="bs" selected>Bosnisch</option>
+          <option value="hr">Kroatisch</option>
+          <option value="de">Deutsch</option>
+          <option value="en">Englisch</option>
+        </select>
+      </label>
+      <label>Stimme A
+        <input id="voiceA" list="voices" value="Daniel">
+      </label>
+      <label>Stimme B
+        <input id="voiceB" list="voices" value="Maya">
+      </label>
+      <label class="check">
+        <input type="checkbox" id="tts" checked> Übersetzung anhören
+      </label>
+      <label class="check">
+        <input type="checkbox" id="diarize"> Sprecher erkennen
+      </label>
+      <label class="audio-url">Audiodatei-URL (optional, statt Mikro)
+        <input type="text" id="audioUrl" placeholder="https://…/test_de.wav">
+      </label>
+      <button id="startBtn">Start</button>
+      <span id="status">bereit</span>
+      <span id="latency"></span>
+    </div>
+  </header>
+  <datalist id="voices">
+    <option value="Adrian"><option value="Maya"><option value="Daniel">
+    <option value="Luna"><option value="Aria"><option value="Leo">
+  </datalist>
+  <main>
+    <section class="col">
+      <h2 id="titleA">Deutsch</h2>
+      <div id="colA" class="text"></div>
+    </section>
+    <section class="col">
+      <h2 id="titleB">Bosnisch</h2>
+      <div id="colB" class="text"></div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
