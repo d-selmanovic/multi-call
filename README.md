@@ -23,7 +23,7 @@ Dann http://localhost:8000 öffnen.
 
 ## Auto-Discovery (Zwei Macs, keine URL-Parameter mehr)
 
-Beide Macs: **Live-Übersetzung.app** öffnen (oder `start.command`), **Start** klicken.
+Beide Macs: **LiveTranslate.app** öffnen (oder `start.command`), **Start** klicken.
 Der Server scannt das LAN selbst: wer einen anderen Demo-Server findet, verbindet sich
 automatisch als Partei B (bosnisch), der andere wird Gastgeber/Partei A (deutsch).
 Gleichzeitige Starts werden per IP-Vergleich aufgelöst (niedrigere IP bleibt Gastgeber).

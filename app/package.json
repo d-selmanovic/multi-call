@@ -5,22 +5,22 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --mac dmg"
+    "dist": "electron-builder --mac"
   },
   "devDependencies": {
-    "electron": "^33.0.0",
-    "electron-builder": "^25.1.8"
+    "electron": "^44.4.1",
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "local.soniox.translate-demo",
-    "productName": "Live-Übersetzung",
-    "files": ["main.js"],
+    "productName": "LiveTranslate",
+    "files": [
+      "main.js"
+    ],
     "mac": {
-      "category": "public.app-category.utilities",
-      "target": ["dmg"],
-      "identity": null,
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Die App übersetzt Sprache in Echtzeit und benötigt Mikrofonzugriff."
+        "NSMicrophoneUsageDescription": "Die App übersetzt Sprache in Echtzeit und benötigt Mikrofonzugriff.",
+        "CFBundleDisplayName": "Live Übersetzung"
       }
     }
   }
