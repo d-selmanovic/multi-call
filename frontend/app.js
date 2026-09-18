@@ -77,6 +77,7 @@ function duckFile() {
 
 function playPcm(dir, bytes) {
   if (!audioCtx) audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
+  if (audioCtx.state === "suspended") audioCtx.resume();
   const pcm = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
   const buf = audioCtx.createBuffer(1, pcm.length, SAMPLE_RATE);
   buf.copyToChannel(new Float32Array(pcm.length).map((_, i) => pcm[i] / 32768), 0);
@@ -112,6 +113,11 @@ async function start() {
   try {
     els.status.textContent = "Mikro wird angefragt…";
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Create the AudioContext NOW, inside the user gesture: browsers
+    // (Chrome/Safari) start it suspended if created later at the first
+    // incoming audio chunk -> text arrives but no sound is heard.
+    if (!audioCtx) audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
+    audioCtx.resume();
   } catch {
     els.status.textContent = "Mikrofon-Zugriff verweigert (Safari → Einstellungen → Websites → Mikrofon)";
     return;
