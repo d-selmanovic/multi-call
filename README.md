@@ -5,6 +5,23 @@ FastAPI-Backend + Vanilla-JS-Frontend. **Phase 1** des Projekts „Live-Telefon�
 (siehe `docs/ROADMAP.md`).
 
 - Architektur & Soniox-Erkenntnisse: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- Aktueller Projektstatus & Setup: [`docs/STATUS.md`](docs/STATUS.md)
+
+## Soniox-Dokumentation
+
+- Übersicht aller Seiten: https://soniox.com/docs/llms.txt
+- Komplette Doku als eine Datei: https://soniox.com/docs/llms-full.txt
+- Markdown-Version jeder Seite: `.mdx` an die URL anhängen
+- MCP-Server für Coding-Assistenten: https://soniox.com/docs/api/mcp/mcp
+- Für dieses Projekt wichtig: [STT WebSocket API](https://soniox.com/docs/api-reference/stt/websocket-api.mdx),
+  [TTS WebSocket API](https://soniox.com/docs/api-reference/tts/websocket-api.mdx),
+  [STS-Translation](https://soniox.com/docs/translation/sts-translation.mdx),
+  [STT Connection Keepalive](https://soniox.com/docs/stt/rt/connection-keepalive.mdx),
+  [TTS Connection Keepalive](https://soniox.com/docs/tts/rt/connection-keepalive.mdx),
+  [STT Error Handling](https://soniox.com/docs/stt/rt/error-handling.mdx),
+  [Voice Cloning](https://soniox.com/docs/tts/concepts/voice-cloning.mdx),
+  [Data Residency (EU)](https://soniox.com/docs/data-residency.mdx),
+  [Proxy-Stream-Architektur](https://soniox.com/docs/guides/proxy-stream.mdx)
 - Alle Einstellungen & Sprachpaare: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
 - Phasenplan inkl. Telefonie: [`docs/ROADMAP.md`](docs/ROADMAP.md)
 

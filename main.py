@@ -373,6 +373,16 @@ async def party_websocket(
             tts_ws = await websockets.connect(TTS_URL)
             tts_holder["ws"] = tts_ws
 
+        async def tts_prewarm(ws) -> None:
+            # A fresh TTS connection must receive a config within ~10s or it is
+            # closed as idle (keepalives do NOT authenticate). Send a prewarm
+            # config so the 5s keepalive can keep the connection alive between
+            # utterances. https://soniox.com/docs/tts/rt/connection-keepalive
+            try:
+                await ws.send(json.dumps(get_tts_config("prewarm", peer_voice, peer_lang)))
+            except websockets.ConnectionClosed:
+                pass
+
         async def tts_reconnect() -> None:
             nonlocal tts_ws
             try:
@@ -384,6 +394,7 @@ async def party_websocket(
             tts_ws = new_ws
             state["current_stream_id"] = None
             state["stream_used"] = False
+            await tts_prewarm(new_ws)
             trace(room, party, "tts_reconnected")
 
         async def send_to_peer_bytes(data: bytes) -> None:
@@ -538,6 +549,16 @@ async def party_websocket(
                     trace(room, party, "tts_conn_lost", msg=str(e)[:80])
                     await tts_reconnect()
 
+        async def stt_keepalive_party() -> None:
+            # Soniox closes STT connections without audio/keepalive >20s.
+            # https://soniox.com/docs/stt/rt/connection-keepalive
+            while True:
+                await asyncio.sleep(5)
+                try:
+                    await stt_holder["ws"].send(json.dumps({"type": "keepalive"}))
+                except websockets.ConnectionClosed:
+                    return
+
         async def tts_keepalive_party() -> None:
             # Soniox kills idle TTS connections after ~10s – ping every 5s.
             while True:
@@ -568,9 +589,13 @@ async def party_websocket(
                     trace(room, party, "mic_stall", chunks=mic_chunks)
                     raise RuntimeError("STT nicht erreichbar")
 
+        if tts:
+            await tts_prewarm(tts_holder["ws"])
+
         async with asyncio.TaskGroup() as tg:
             tg.create_task(pipe_mic_to_stt_party())
             tg.create_task(handle_stt_party())
+            tg.create_task(stt_keepalive_party())
             if tts:
                 tg.create_task(tts_sender_party())
                 tg.create_task(pipe_tts_audio_party())
