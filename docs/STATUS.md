@@ -1,6 +1,6 @@
 # Projektstatus: Live-Übersetzung Bosnisch ↔ Deutsch
 
-Stand: 2026-09-18, früh. Repo: https://github.com/d-selmanovic/multi-call
+Stand: 2026-09-19, früh. Repo: https://github.com/d-selmanovic/multi-call
 
 ## 1. Ziel
 
@@ -117,3 +117,16 @@ getrennte Hosts), Modelle (`stt-rt-v5`/`tts-rt-v2` korrekt).
    STT-408-Reconnects ganz zu vermeiden.
 3. Morgen: Präsentation (25 Min): Problem → Live-Demo → Roadmap
    (Asterisk/sipgate-Telefonie, Voice-Cloning, freie Sprachpaare pro Nummer).
+
+## 8. Anhang: Verifikation der Zwei-Geräte-Anleitung (2026-09-19)
+
+Die Party-Modus-Anleitung im README (`?party=a/b&room=test`, Port 8000, Partei A
+definiert Sprachen/Stimmen auf erste Einwahl, jede Seite hört nur die
+Übersetzung, `peer_text` als Lestext) wurde gegen den Code verifiziert
+(`frontend/app.js`, `main.py:315-328`) – sie ist korrekt. Zu beachten:
+
+- **Secure Context:** `http://<LAN-IP>` gibt kein Mikro frei → Proxy-Modus
+  oder Direkt-URL nur mit HTTPS/Ausnahme. Der Proxy-Modus ist deshalb der
+  empfohlene Zwei-Geräte-Standard (Browser bleiben auf `localhost`).
+- **Auto-Discovery** (ohne URL-Parameter) existiert als Alternative, ist aber
+  gegenüber dem Proxy-Modus zweitrangig.
