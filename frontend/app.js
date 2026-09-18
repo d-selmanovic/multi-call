@@ -191,6 +191,9 @@ async function startParty(party, host, room) {
       render();
       return;
     }
+    // Non-final tokens repeat the whole in-progress utterance in every STT
+    // message – reset the tail first, then fill it with this message's version.
+    cols.forEach((c) => (c.nonFinal = ""));
     for (const token of data.tokens || []) {
       const text = token.text;
       if (!text) continue;
@@ -199,11 +202,9 @@ async function startParty(party, host, room) {
       if (token.speaker !== undefined && token.speaker !== cols[idx].speaker) {
         cols[idx].speaker = token.speaker;
         cols[idx].final += `\n[${token.speaker}] `;
-        cols[idx].nonFinal = "";
       }
       if (token.is_final) {
         cols[idx].final += text;
-        cols[idx].nonFinal = "";
       } else {
         cols[idx].nonFinal += text;
       }
