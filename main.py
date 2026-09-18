@@ -339,11 +339,13 @@ async def party_websocket(
     r["parties"][party] = {"ws": browser_ws}
     tts_queue: asyncio.Queue = asyncio.Queue()
     state = {"current_stream_id": None, "stream_used": False, "stt_done": False}
+    stt_holder: dict = {"ws": None}  # current STT connection, swapped on reconnect
 
     stt_ws = None
     tts_ws = None
     try:
         stt_ws = await websockets.connect(STT_URL)
+        stt_holder["ws"] = stt_ws
         await stt_ws.send(json.dumps(get_stt_config_oneway([my_lang, peer_lang], peer_lang)))
         if tts:
             tts_ws = await websockets.connect(TTS_URL)
@@ -365,17 +367,41 @@ async def party_websocket(
                     pass
 
         async def handle_stt_party() -> None:
+            nonlocal stt_ws
             try:
                 while True:
                     data = json.loads(await stt_ws.recv())
                     data["_rx_ms"] = round(time.time() * 1000)
+                    if data.get("error_code") is not None:
+                        print(f"[party {party}] STT error: {data['error_code']} - {data.get('error_message')}")
+                        if data["error_code"] == 408:
+                            # Idle timeout (e.g. background throttling stalled the
+                            # mic stream): reconnect STT and keep the call alive.
+                            try:
+                                await stt_ws.close()
+                            except Exception:
+                                pass
+                            new_ws = await websockets.connect(STT_URL)
+                            await new_ws.send(json.dumps(
+                                get_stt_config_oneway([my_lang, peer_lang], peer_lang)
+                            ))
+                            stt_holder["ws"] = new_ws
+                            stt_ws = new_ws
+                            await browser_ws.send_json({
+                                "info": "stt_reconnected",
+                                "message": "Verbindung wurde automatisch erneuert",
+                            })
+                            continue
+                        # Unrecoverable: forward to browser and give up.
+                        try:
+                            await browser_ws.send_json(data)
+                        except Exception:
+                            pass
+                        break
                     # Own browser shows what it said (original tokens included).
                     try:
                         await browser_ws.send_json(data)
                     except Exception:
-                        break
-                    if data.get("error_code") is not None:
-                        print(f"Error: {data['error_code']} - {data['error_message']}")
                         break
                     for token in data.get("tokens", []):
                         if token.get("translation_status") == "translation" and token.get("text"):
@@ -446,8 +472,22 @@ async def party_websocket(
             except websockets.ConnectionClosedError as e:
                 print(f"[party {party}] tts conn error: {e}")
 
+        async def pipe_mic_to_stt_party() -> None:
+            # Reads the CURRENT stt connection from stt_holder so a 408-reconnect
+            # doesn't kill this task; buffers mic bytes during the swap.
+            while True:
+                data = await browser_ws.receive_bytes()
+                for _ in range(25):  # ~5s of retries while reconnecting
+                    try:
+                        await stt_holder["ws"].send(data)
+                        break
+                    except websockets.ConnectionClosed:
+                        await asyncio.sleep(0.2)
+                else:
+                    raise RuntimeError("STT nicht erreichbar")
+
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(pipe_browser_audio_to_stt(browser_ws, stt_ws))
+            tg.create_task(pipe_mic_to_stt_party())
             tg.create_task(handle_stt_party())
             if tts:
                 tg.create_task(tts_sender_party())

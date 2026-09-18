@@ -196,7 +196,7 @@ async function startParty(party, host, room) {
     cols.forEach((c) => (c.nonFinal = ""));
     for (const token of data.tokens || []) {
       const text = token.text;
-      if (!text) continue;
+      if (!text || text === "<end>") continue;
       if (partyMode && token.translation_status === "translation") continue;
       const idx = colIndex(token.language);
       if (token.speaker !== undefined && token.speaker !== cols[idx].speaker) {
