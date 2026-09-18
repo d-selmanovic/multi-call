@@ -5,6 +5,7 @@ const SAMPLE_RATE = 24000;
 // hears only the translation meant for it.
 const urlParams = new URLSearchParams(location.search);
 const partyMode = urlParams.get("party");
+const proxyPeer = urlParams.get("proxy"); // LAN proxy: local browser <-> remote host
 const roomName = urlParams.get("room") || "demo";
 
 const els = {
@@ -177,7 +178,13 @@ async function startParty(party, host, room) {
   let wsUrl;
   params.set("room", room);
   params.set("party", party);
-  wsUrl = `ws://${host}/ws/party?${params}`;
+  if (proxyPeer) {
+    // Tunnel through OUR OWN backend to the remote host (mic stays on localhost).
+    params.set("peer", proxyPeer);
+    wsUrl = `ws://${host}/ws/proxy?${params}`;
+  } else {
+    wsUrl = `ws://${host}/ws/party?${params}`;
+  }
   ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";
 

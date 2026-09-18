@@ -682,4 +682,54 @@ async def trace_log(lines: int = 200):
         return []
 
 
+
+
+# ---------------------------------------------------------------------------
+# LAN proxy: browsers only get microphone access on secure contexts (localhost
+# is exempt; http://<lan-ip> is NOT). So each device keeps its browser on
+# localhost and the local backend tunnels to the host's /ws/party endpoint.
+# ---------------------------------------------------------------------------
+
+
+@app.websocket("/ws/proxy")
+async def proxy_websocket(
+    browser_ws: WebSocket,
+    room: str,
+    party: str = "a",
+    peer: str = "",
+    tts: bool = True,
+) -> None:
+    """Transparent tunnel: local browser <-> remote party endpoint on `peer`.
+    All translation happens on the host; this server only pipes bytes."""
+    await browser_ws.accept()
+    upstream = None
+    try:
+        upstream = await websockets.connect(
+            f"ws://{peer}:8000/ws/party?room={room}&party={party}&tts={str(tts).lower()}"
+        )
+        trace("proxy-" + room, party, "proxy_connected", peer=peer)
+
+        async def browser_to_upstream() -> None:
+            while True:
+                data = await browser_ws.receive_bytes()
+                await upstream.send(data)
+
+        async def upstream_to_browser() -> None:
+            while True:
+                msg = await upstream.recv()
+                if isinstance(msg, bytes):
+                    await browser_ws.send_bytes(msg)
+                else:
+                    await browser_ws.send_text(msg)
+
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(browser_to_upstream())
+            tg.create_task(upstream_to_browser())
+    except* WebSocketDisconnect:
+        pass
+    finally:
+        if upstream is not None:
+            await upstream.close()
+
+
 app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
