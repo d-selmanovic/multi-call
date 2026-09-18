@@ -364,12 +364,27 @@ async def party_websocket(
 
     stt_ws = None
     tts_ws = None
+    tts_holder: dict = {"ws": None}  # current TTS connection, swapped on reconnect
     try:
         stt_ws = await websockets.connect(STT_URL)
         stt_holder["ws"] = stt_ws
         await stt_ws.send(json.dumps(get_stt_config_oneway([my_lang, peer_lang], peer_lang)))
         if tts:
             tts_ws = await websockets.connect(TTS_URL)
+            tts_holder["ws"] = tts_ws
+
+        async def tts_reconnect() -> None:
+            nonlocal tts_ws
+            try:
+                await tts_holder["ws"].close()
+            except Exception:
+                pass
+            new_ws = await websockets.connect(TTS_URL)
+            tts_holder["ws"] = new_ws
+            tts_ws = new_ws
+            state["current_stream_id"] = None
+            state["stream_used"] = False
+            trace(room, party, "tts_reconnected")
 
         async def send_to_peer_bytes(data: bytes) -> None:
             peer_ws = r["parties"].get(peer, {}).get("ws")
@@ -454,57 +469,83 @@ async def party_websocket(
 
         async def tts_sender_party() -> None:
             counter = 0
-            try:
-                while True:
-                    try:
-                        item = await asyncio.wait_for(tts_queue.get(), timeout=4.0)
-                    except asyncio.TimeoutError:
-                        # No translation tokens for 4s: flush the open stream with
-                        # text_end. Soniox kills streams idle >~5s (408), and a
-                        # pause means the utterance is over anyway.
-                        if state["current_stream_id"] is not None and state["stream_used"]:
-                            await tts_ws.send(json.dumps(
-                                {"stream_id": state["current_stream_id"], "text": "", "text_end": True}
+            while True:
+                try:
+                    while True:
+                        try:
+                            item = await asyncio.wait_for(tts_queue.get(), timeout=4.0)
+                        except asyncio.TimeoutError:
+                            # No translation tokens for 4s: flush the open stream with
+                            # text_end. Soniox kills streams idle >~5s (408), and a
+                            # pause means the utterance is over anyway.
+                            if state["current_stream_id"] is not None and state["stream_used"]:
+                                await tts_holder["ws"].send(json.dumps(
+                                    {"stream_id": state["current_stream_id"], "text": "", "text_end": True}
+                                ))
+                            state["current_stream_id"] = None
+                            state["stream_used"] = False
+                            continue
+                        if item is None:
+                            return
+                        kind, text = item
+                        if kind == "text":
+                            if state["current_stream_id"] is None:
+                                counter += 1
+                                sid = f"utter-{counter}"
+                                await tts_holder["ws"].send(json.dumps(get_tts_config(sid, peer_voice, peer_lang)))
+                                trace(room, party, "tts_stream_open", stream_id=sid)
+                                state["current_stream_id"] = sid
+                            await tts_holder["ws"].send(json.dumps(
+                                {"stream_id": state["current_stream_id"], "text": text, "text_end": False}
                             ))
-                        state["current_stream_id"] = None
-                        state["stream_used"] = False
-                        continue
-                    if item is None:
-                        break
-                    kind, text = item
-                    if kind == "text":
-                        if state["current_stream_id"] is None:
-                            counter += 1
-                            sid = f"utter-{counter}"
-                            await tts_ws.send(json.dumps(get_tts_config(sid, peer_voice, peer_lang)))
-                            trace(room, party, "tts_stream_open", stream_id=sid)
-                            state["current_stream_id"] = sid
-                        await tts_ws.send(json.dumps(
-                            {"stream_id": state["current_stream_id"], "text": text, "text_end": False}
-                        ))
-                        state["stream_used"] = True
-                    elif kind == "end":
-                        if state["current_stream_id"] is not None and state["stream_used"]:
-                            await tts_ws.send(json.dumps(
-                                {"stream_id": state["current_stream_id"], "text": "", "text_end": True}
-                            ))
-                        state["current_stream_id"] = None
-                        state["stream_used"] = False
-            except websockets.ConnectionClosed as e:
-                print(f"[party {party}] tts sender conn closed: {e}")
+                            state["stream_used"] = True
+                        elif kind == "end":
+                            if state["current_stream_id"] is not None and state["stream_used"]:
+                                trace(room, party, "tts_stream_close", stream_id=state["current_stream_id"])
+                                await tts_holder["ws"].send(json.dumps(
+                                    {"stream_id": state["current_stream_id"], "text": "", "text_end": True}
+                                ))
+                            state["current_stream_id"] = None
+                            state["stream_used"] = False
+                except websockets.ConnectionClosed as e:
+                    print(f"[party {party}] tts sender conn closed: {e} – reconnecting")
+                    trace(room, party, "tts_conn_lost", msg=str(e)[:80])
+                    await tts_reconnect()
 
         async def pipe_tts_audio_party() -> None:
-            try:
-                while True:
-                    data = json.loads(await tts_ws.recv())
-                    if data.get("audio"):
-                        await send_to_peer_bytes(base64.b64decode(data["audio"]))
-                    if data.get("terminated") and state["stt_done"] and state["current_stream_id"] is None:
-                        break
-            except websockets.ConnectionClosedOK:
-                pass
-            except websockets.ConnectionClosedError as e:
-                print(f"[party {party}] tts conn error: {e}")
+            out_bytes = 0
+            out_chunks = 0
+            while True:
+                try:
+                    while True:
+                        data = json.loads(await tts_holder["ws"].recv())
+                        if data.get("audio"):
+                            pcm = base64.b64decode(data["audio"])
+                            out_chunks += 1
+                            out_bytes += len(pcm)
+                            peer_ws = r["parties"].get(peer, {}).get("ws")
+                            if peer_ws is None:
+                                trace(room, party, "tts_audio_no_peer", bytes=out_bytes)
+                            await send_to_peer_bytes(pcm)
+                            if out_chunks % 10 == 1:
+                                trace(room, party, "tts_audio_out", chunks=out_chunks, bytes=out_bytes, peer_connected=peer_ws is not None)
+                        if data.get("error_code"):
+                            trace(room, party, "tts_error", code=data["error_code"], msg=data.get("error_message"))
+                        if data.get("terminated") and state["stt_done"] and state["current_stream_id"] is None:
+                            return
+                except websockets.ConnectionClosed as e:
+                    print(f"[party {party}] tts pipe conn closed: {e} – reconnecting")
+                    trace(room, party, "tts_conn_lost", msg=str(e)[:80])
+                    await tts_reconnect()
+
+        async def tts_keepalive_party() -> None:
+            # Soniox kills idle TTS connections after ~10s – ping every 5s.
+            while True:
+                await asyncio.sleep(5)
+                try:
+                    await tts_holder["ws"].send(json.dumps({"keep_alive": True}))
+                except websockets.ConnectionClosed:
+                    return
 
         async def pipe_mic_to_stt_party() -> None:
             # Reads the CURRENT stt connection from stt_holder so a 408-reconnect
@@ -533,7 +574,7 @@ async def party_websocket(
             if tts:
                 tg.create_task(tts_sender_party())
                 tg.create_task(pipe_tts_audio_party())
-                tg.create_task(tts_keepalive(tts_ws))
+                tg.create_task(tts_keepalive_party())
 
     except* WebSocketDisconnect:
         pass
