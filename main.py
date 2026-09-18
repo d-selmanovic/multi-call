@@ -15,6 +15,26 @@ TTS_URL = os.environ.get("SONIOX_TTS_URL", "wss://tts-rt.soniox.com/tts-websocke
 
 app = FastAPI()
 
+# --- Tracing: JSON-lines pipeline log for debugging -----------------------------
+TRACE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "trace.log")
+os.makedirs(os.path.dirname(TRACE_FILE), exist_ok=True)
+
+
+def trace(room: str, party: str, event: str, **kw) -> None:
+    entry = {
+        "t": round(time.time(), 3),
+        "time": time.strftime("%H:%M:%S"),
+        "room": room,
+        "party": party,
+        "event": event,
+        **kw,
+    }
+    try:
+        with open(TRACE_FILE, "a") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
 
 def get_stt_config(lang_a: str, lang_b: str, diarize: bool) -> dict:
     return {
@@ -337,6 +357,7 @@ async def party_websocket(
     peer_voice = cfg["voice_a"] if peer_lang == cfg["lang_a"] else cfg["voice_b"]
 
     r["parties"][party] = {"ws": browser_ws}
+    trace(room, party, "party_connected", my_lang=my_lang, peer_lang=peer_lang, peer_voice=peer_voice)
     tts_queue: asyncio.Queue = asyncio.Queue()
     state = {"current_stream_id": None, "stream_used": False, "stt_done": False}
     stt_holder: dict = {"ws": None}  # current STT connection, swapped on reconnect
@@ -374,6 +395,7 @@ async def party_websocket(
                     data["_rx_ms"] = round(time.time() * 1000)
                     if data.get("error_code") is not None:
                         print(f"[party {party}] STT error: {data['error_code']} - {data.get('error_message')}")
+                        trace(room, party, "stt_error", code=data["error_code"], msg=data.get("error_message"))
                         if data["error_code"] == 408:
                             # Idle timeout (e.g. background throttling stalled the
                             # mic stream): reconnect STT and keep the call alive.
@@ -387,6 +409,7 @@ async def party_websocket(
                             ))
                             stt_holder["ws"] = new_ws
                             stt_ws = new_ws
+                            trace(room, party, "stt_reconnected")
                             await browser_ws.send_json({
                                 "info": "stt_reconnected",
                                 "message": "Verbindung wurde automatisch erneuert",
@@ -403,14 +426,24 @@ async def party_websocket(
                         await browser_ws.send_json(data)
                     except Exception:
                         break
+                    n_orig = 0
+                    n_trans = 0
                     for token in data.get("tokens", []):
+                        if token.get("text") and token["text"] != "<end>":
+                            if token.get("translation_status") == "translation":
+                                n_trans += 1
+                            else:
+                                n_orig += 1
                         if token.get("translation_status") == "translation" and token.get("text"):
                             await tts_queue.put(("text", token["text"]))
                             # Let the peer read the translation as text too.
                             await send_to_peer_json(
                                 {"peer_text": token["text"], "peer_lang": peer_lang}
                             )
+                    if n_orig or n_trans:
+                        trace(room, party, "stt_tokens", original=n_orig, translation=n_trans)
                     if data.get("finished"):
+                        trace(room, party, "stt_finished")
                         break
             except websockets.ConnectionClosedOK:
                 pass
@@ -444,6 +477,7 @@ async def party_websocket(
                             counter += 1
                             sid = f"utter-{counter}"
                             await tts_ws.send(json.dumps(get_tts_config(sid, peer_voice, peer_lang)))
+                            trace(room, party, "tts_stream_open", stream_id=sid)
                             state["current_stream_id"] = sid
                         await tts_ws.send(json.dumps(
                             {"stream_id": state["current_stream_id"], "text": text, "text_end": False}
@@ -475,8 +509,14 @@ async def party_websocket(
         async def pipe_mic_to_stt_party() -> None:
             # Reads the CURRENT stt connection from stt_holder so a 408-reconnect
             # doesn't kill this task; buffers mic bytes during the swap.
+            mic_bytes = 0
+            mic_chunks = 0
             while True:
                 data = await browser_ws.receive_bytes()
+                mic_chunks += 1
+                mic_bytes += len(data)
+                if mic_chunks % 40 == 1:  # ~every 10s of audio
+                    trace(room, party, "mic_audio", chunks=mic_chunks, bytes=mic_bytes)
                 for _ in range(25):  # ~5s of retries while reconnecting
                     try:
                         await stt_holder["ws"].send(data)
@@ -484,6 +524,7 @@ async def party_websocket(
                     except websockets.ConnectionClosed:
                         await asyncio.sleep(0.2)
                 else:
+                    trace(room, party, "mic_stall", chunks=mic_chunks)
                     raise RuntimeError("STT nicht erreichbar")
 
         async with asyncio.TaskGroup() as tg:
@@ -497,6 +538,7 @@ async def party_websocket(
     except* WebSocketDisconnect:
         pass
     finally:
+        trace(room, party, "party_disconnected")
         r["parties"].pop(party, None)
         for ws in (stt_ws, tts_ws):
             if ws is not None:
@@ -586,6 +628,17 @@ async def check_host(port: int = 8000):
     if peers and own and own > peers[0]:
         return JSONResponse({"stay_host": False, "peer": peers[0]})
     return JSONResponse({"stay_host": True, "peer": None})
+
+
+@app.get("/trace")
+async def trace_log(lines: int = 200):
+    """Last N trace lines (JSON) for debugging."""
+    try:
+        with open(TRACE_FILE) as fh:
+            all_lines = fh.readlines()
+        return [json.loads(l) for l in all_lines[-lines:]]
+    except OSError:
+        return []
 
 
 app.mount("/", StaticFiles(directory="frontend", html=True), name="static")

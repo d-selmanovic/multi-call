@@ -34,6 +34,12 @@ let duckTimer = null;
 let nextPlayTime = [0, 0];   // per direction
 let lastAudioSentAt = 0;
 let firstAudioAt = null;
+let bytesSent = 0;
+let bytesRecv = 0;
+
+function updateCounters() {
+  els.latency.textContent = `gesendet: ${(bytesSent / 1024).toFixed(0)} KB · empfangen: ${(bytesRecv / 48000).toFixed(1)} s Audio`;
+}
 
 // Per column: finalized text, non-final tail, last speaker label.
 const cols = [
@@ -84,6 +90,9 @@ function playPcm(dir, bytes) {
 }
 
 function reset() {
+  bytesSent = 0;
+  bytesRecv = 0;
+  updateCounters();
   cols.forEach((c) => {
     c.final = "";
     c.nonFinal = "";
@@ -171,7 +180,11 @@ async function startParty(party, host, room) {
     els.status.textContent = `verbunden als Partei ${party.toUpperCase()} (Raum ${room}) – sprich jetzt`;
     recorder = new MediaRecorder(stream);
     recorder.ondataavailable = (e) => {
-      if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) ws.send(e.data);
+      if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+        bytesSent += e.data.size;
+        updateCounters();
+        ws.send(e.data);
+      }
     };
     recorder.start(250);
   };
@@ -179,6 +192,8 @@ async function startParty(party, host, room) {
   ws.onmessage = (e) => {
     if (e.data instanceof ArrayBuffer) {
       const view = new Uint8Array(e.data);
+      bytesRecv += view.length;
+      updateCounters();
       // Party mode always: raw PCM, no direction prefix.
       playPcm(0, view);
       return;
