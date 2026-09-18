@@ -9,6 +9,7 @@ dependencies = [
     "websockets>=13",
     "httpx>=0.27",
     "python-dotenv>=1.0",
+    "soniox>=2.9.0",
 ]
 
 [dependency-groups]
