@@ -98,6 +98,16 @@ function reset() {
 async function start() {
   reset();
 
+  // Mic FIRST, inside the click gesture — Safari requires getUserMedia to be
+  // triggered by a real user action; asking later (after awaits) can be denied.
+  try {
+    els.status.textContent = "Mikro wird angefragt…";
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    els.status.textContent = "Mikrofon-Zugriff verweigert (Safari → Einstellungen → Websites → Mikrofon)";
+    return;
+  }
+
   // Auto-discovery: without an explicit ?party= param, decide the role:
   // peer found on the LAN -> redirect there as party=b; else become host
   // (party=a) and re-check shortly to resolve simultaneous starts.
@@ -133,11 +143,10 @@ async function start() {
   }
 
   if (urlParams.get("auto") === "1") {
-    // Redirected here as party b: start immediately.
+    // Redirected here as party b; mic already acquired above (real click).
     els.status.textContent = "verbinde…";
   }
   await startParty(partyMode, location.host, roomName);
-  if (urlParams.get("auto") === "1") els.startBtn.click();
 }
 
 async function startParty(party, host, room) {
@@ -157,10 +166,9 @@ async function startParty(party, host, room) {
   ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";
 
-  ws.onopen = async () => {
+  ws.onopen = () => {
     els.startBtn.textContent = "Stop";
     els.status.textContent = `verbunden als Partei ${party.toUpperCase()} (Raum ${room}) – sprich jetzt`;
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     recorder = new MediaRecorder(stream);
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) ws.send(e.data);
