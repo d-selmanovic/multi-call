@@ -42,6 +42,8 @@ Browser ──localhost──> Server G1 <════ LAN ════> Server 
   (non-finale Tokens werden ersetzt, nicht angehängt).
 - AudioContext-Fix (im Klick anlegen → Autoplay-Sperre umgangen).
 - LAN-Proxy-Endpunkt + Selbsttest erfolgreich.
+- Electron-Hülle `LiveTranslate.app`: baut (electron-builder 26, Electron 44),
+  startet ohne Crash, bindet Backend auf Port 8000 (spawn bzw. Reuse).
 
 ## 4. Das aktuelle Problem
 
@@ -74,7 +76,11 @@ beim Peer. Ursachenkette (alle gefunden, alle bis auf eine behoben):
 11. STT 408 → Auto-Reconnect (Holder-Pattern).
 12. Discovery unzuverlässig → Direkt-URLs → Mic-Blockade → **Proxy-Modus**.
 13. Electron-App gebaut (ohne Deskifier): Crash durch Umlaut im Executable-Namen
-    (productName jetzt ASCII `LiveTranslate`), dmg in ~/Downloads.
+    (productName jetzt ASCII `LiveTranslate`). Fix verifiziert: signierter Build
+    (Apple Development, Team 6S2JTFA22L) startet sauber und erkennt ein
+    laufendes Backend (`app/dist/LiveTranslate-0.1.0-arm64.dmg`, installiert
+    als `/Applications/LiveTranslate.app`). Anzeigename bleibt „Live
+    Übersetzung" (CFBundleDisplayName) – Umlaut nur im productName verboten.
 14. Trace-Logging eingebaut, das alle obigen Diagnosen erst möglich machte.
 
 Nicht das Problem (geprüft): API-Key (EU-Key funktioniert an EU-Endpoints,
