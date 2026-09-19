@@ -42,7 +42,7 @@ Repo: https://github.com/d-selmanovic/multi-call (Branch `main`).
 - `main.py` – Endpunkte: `/ws/translate` (Single), `/ws/party`, `/ws/proxy`,
   `/discover`, `/health`, `/trace`
 - `frontend/app.js` – Party-/Proxy-Modus, Audio-Handling, Zähler
-- `docs/` – ARCHITECTURE, CONFIGURATION, ROADMAP, SONIOX-DOCS, STATUS
+- `docs/` – ARCHITECTURE, CONFIGURATION, ROADMAP, SONIOX-DOCS, STATUS, HANDOFF
 - `logs/trace.log` + `GET /trace` – Tracing, erste Anlaufstelle bei Diagnose
 
 ## Issue Tracker

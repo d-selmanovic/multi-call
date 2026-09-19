@@ -1,6 +1,8 @@
 # Projektstatus: Live-Übersetzung Bosnisch ↔ Deutsch
 
-Stand: 2026-09-19, früh. Repo: https://github.com/d-selmanovic/multi-call
+Stand: 2026-09-19. Repo: https://github.com/d-selmanovic/multi-call
+**Ausführlicher Übergabe-/Projektbericht: `docs/HANDOFF.md`** (Architektur, Timeout-
+Tabelle, Betrieb, Verifikationsstand, Roadmap, Präsentations-Fallbacks).
 
 ## 1. Ziel
 
