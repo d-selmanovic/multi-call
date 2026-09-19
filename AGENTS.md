@@ -47,5 +47,6 @@ Repo: https://github.com/d-selmanovic/multi-call (Branch `main`).
 
 ## Issue Tracker
 
-Linear (Projekt pro Repo). Bevorzugt Issues für offene Punkte aus
-`docs/STATUS.md` Abschnitt „Nächste Schritte" anlegen/aktualisieren.
+GitHub Issues im Repo `d-selmanovic/multi-call` (kein Linear verfügbar).
+Bevorzugt Issues für offene Punkte aus `docs/STATUS.md` Abschnitt
+„Nächste Schritte" anlegen/aktualisieren.
